@@ -1,0 +1,198 @@
+/* Root container: split-screen layout */
+#root {
+  width: 100vw;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column; /* header on top, content below */
+  height: 100vh;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* Header: 1/4th of screen height */
+.app-header {
+  flex: 0 0 25vh; /* 25% of viewport height */
+  display: flex;
+  align-items: center;
+  justify-content: center; /* center brand horizontally */
+  padding: 0 20px;
+  border-bottom: 1px solid #ffffff;
+  flex-direction: column; /* stack brand and tagline */
+}
+
+.brand {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.tagline {
+  margin-top: 8px;
+  font-size: 14px;
+  color: #cbd5e1;
+  text-align: center;
+  max-width: 800px;
+}
+
+/* Content row: split left/right */
+.content {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  box-sizing: border-box;
+  min-height: 0;
+}
+
+/* App titles */
+.app-title {
+  margin: 0 0 4px 0;
+  font-size: 28px;
+}
+
+.app-subtitle {
+  margin: 0 0 24px 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+/* Input and output sections */
+.stack, .panel {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #ffffff; /* white outline around each side */
+  border-radius: 10px;
+  background: transparent;
+  box-sizing: border-box; /* include padding/border in width calc */
+  min-width: 0; /* allow flex children to shrink and avoid overflow */
+  min-height: 0; /* allow vertical children to shrink inside */
+}
+
+/* Explicit split: left 50%, right fills remaining space */
+.stack { flex: 0 0 50%; padding: 16px; gap: 8px; }
+.panel { flex: 1 1 50%; padding: 16px; }
+
+/* Box titles */
+.label, .panel-title {
+  padding: 6px 8px;
+  border-bottom: 1px solid #ffffff;
+}
+
+/* Labels */
+.label {
+  font-weight: 600;
+}
+
+/* Textarea */
+.textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #ffffff; /* inner white outline */
+  background: #0f0f0f;
+  color: #fff;
+  flex: 1; /* fill available vertical space */
+  box-sizing: border-box;
+  min-height: 0; /* prevent flex overflow */
+  overflow: auto;
+}
+
+.textarea-lg {
+  min-height: auto;
+}
+
+/* Light mode adjustments */
+@media (prefers-color-scheme: light) {
+  .textarea {
+    background: #fff;
+    border-color: #e5e7eb;
+    color: #000;
+  }
+}
+
+/* Buttons */
+.button-row {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}
+
+.button-row.right {
+  justify-content: flex-end; /* move buttons to the right */
+}
+
+.btn-secondary {
+  background: transparent;
+  border: 1px solid #d1d5db;
+  color: inherit;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* Output panel */
+.panel {
+  padding: 12px;
+  flex: 1; /* fill vertical space */
+  overflow: auto;
+  color: #fff;
+}
+
+@media (prefers-color-scheme: light) {
+  .panel {
+    background: transparent;
+    border-color: #ffffff; /* keep white outline in light mode too */
+    color: #000;
+  }
+  .output-box {
+    background: #fff; /* match textarea in light mode */
+  }
+}
+
+.panel-title {
+  margin: 0 0 6px 0;
+  font-weight: 600;
+}
+
+/* Output text */
+.output {
+  white-space: pre-wrap;
+  line-height: 1.7;
+  font-size: 16px;
+}
+
+.output-box {
+  flex: 1; /* fill vertical space */
+  padding: 8px;
+  border: 1px solid #ffffff; /* inner white outline */
+  border-radius: 6px;
+  background: #0f0f0f; /* match textarea dark background */
+  overflow: auto;
+  box-sizing: border-box;
+  min-height: 0;
+}
+
+/* Output toolbar */
+.output-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+/* Responsive: stack panels vertically on small screens */
+@media (max-width: 768px) {
+  #root {
+    flex-direction: column;
+    height: auto;
+  }
+
+  .stack, .panel {
+    flex: none;
+    height: auto;
+  }
+
+  .textarea, .output-box {
+    min-height: 200px;
+  }
+}
