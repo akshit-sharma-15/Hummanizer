@@ -13,6 +13,46 @@ const API_KEYS = Object.entries(import.meta.env)
 // Pre-create a GoogleGenAI client per key
 const aiClients = API_KEYS.map((key) => new GoogleGenAI({ apiKey: key }))
 
+const chunkText = (text, maxLength = 2000) => {
+  // Use a regex to match sentences (ending with . ! or ? and optional trailing whitespace)
+  const sentenceRegex = /[^.!?]+[.!?]*\s*/g;
+  const matchSentences = text.match(sentenceRegex);
+
+  // If no sentences matched (e.g., a single huge block of text without punctuation), fallback to the whole text
+  const sentences = matchSentences || [text];
+
+  const chunks = [];
+  let currentChunk = '';
+
+  for (const sentence of sentences) {
+    if (currentChunk.length + sentence.length > maxLength && currentChunk.length > 0) {
+      chunks.push(currentChunk.trim());
+      currentChunk = '';
+    }
+    
+    // Safety fallback: if a SINGLE sentence is longer than maxLength (very rare)
+    // we split by words (spaces) so we still don't cut words in half
+    if (sentence.length > maxLength) {
+      const words = sentence.split(' ');
+      for (const word of words) {
+        if (currentChunk.length + word.length > maxLength && currentChunk.length > 0) {
+          chunks.push(currentChunk.trim());
+          currentChunk = '';
+        }
+        currentChunk += (currentChunk ? ' ' : '') + word;
+      }
+    } else {
+      currentChunk += sentence;
+    }
+  }
+
+  if (currentChunk.trim()) {
+    chunks.push(currentChunk.trim());
+  }
+
+  return chunks;
+};
+
 export default function App() {
   const [inputText, setInputText] = useState('')
   const [outputText, setOutputText] = useState('')
@@ -20,52 +60,79 @@ export default function App() {
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
 
-  async function callGeminiAPI(text) {
-    const trimmed = (text || '').trim()
-    if (!trimmed) {
-      setOutputText('')
-      setError('')
-      return
-    }
+  async function callGeminiForChunk(chunk, onProgress) {
     if (aiClients.length === 0) {
-      setError('No API keys configured. Add VITE_GEMINI_API_KEY_1, _2, etc. to your .env file.')
-      return
+      throw new Error('No API keys configured. Add VITE_GEMINI_API_KEY_1, _2, etc. to your .env file.');
     }
-    setLoading(true)
-    setError('')
 
     for (let i = 0; i < aiClients.length; i++) {
       try {
-        const response = await aiClients[i].models.generateContent({
+        const responseStream = await aiClients[i].models.generateContentStream({
           model: 'gemini-3-flash-preview',
-          contents: `${DEFAULT_PROMPT}\n\nText: ${text}`,
-        })
-
-        setOutputText(response.text || '')
-        setLoading(false)
-        return // success - stop trying more keys
+          contents: `${DEFAULT_PROMPT}\n\nText: ${chunk}`,
+        });
+        
+        let chunkOutput = '';
+        for await (const streamChunk of responseStream) {
+          chunkOutput += streamChunk.text;
+          if (onProgress) {
+            onProgress(chunkOutput);
+          }
+        }
+        return chunkOutput;
       } catch (err) {
         const isQuotaError = err?.status === 429 ||
           err?.message?.includes('429') ||
           err?.message?.includes('RESOURCE_EXHAUSTED') ||
-          err?.message?.includes('quota')
+          err?.message?.includes('quota');
 
         if (isQuotaError && i < aiClients.length - 1) {
-          // This key is exhausted, try the next one
-          console.warn(`API key ${i + 1} quota exceeded, switching to key ${i + 2}...`)
-          continue
+          console.warn(`API key ${i + 1} quota exceeded, switching to key ${i + 2}...`);
+          continue;
         }
 
-        // Last key or non-quota error
         if (isQuotaError) {
-          setError(`All ${aiClients.length} API key(s) exhausted. Wait for quota reset or add more keys.`)
+          throw new Error(`All ${aiClients.length} API key(s) exhausted. Wait for quota reset or add more keys.`);
         } else {
-          setError(err.message || 'Unknown error')
+          throw new Error(err.message || 'Unknown error');
         }
       }
     }
+  }
 
-    setLoading(false)
+  async function callGeminiAPI(text) {
+    const trimmed = (text || '').trim();
+    if (!trimmed) {
+      setOutputText('');
+      setError('');
+      return;
+    }
+    
+    setLoading(true);
+    setError('');
+    // We intentionally don't clear outputText yet if you want to keep it until the first chunk loads,
+    // but clearing it shows the user that new processing has started:
+    setOutputText('');
+
+    const chunks = chunkText(trimmed, 2000);
+    let fullOutput = '';
+
+    try {
+      for (let i = 0; i < chunks.length; i++) {
+        const chunkOutput = await callGeminiForChunk(chunks[i], (partialChunkOutput) => {
+          // As the current chunk streams in, show previous completed chunks + this partial one
+          const newCurrentStream = fullOutput + (fullOutput ? '\n\n' : '') + partialChunkOutput;
+          setOutputText(newCurrentStream);
+        });
+        fullOutput += (fullOutput ? '\n\n' : '') + chunkOutput.trim();
+        // Update fully after chunk is done
+        setOutputText(fullOutput);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -99,26 +166,27 @@ export default function App() {
         <section className="panel" aria-label="Output section">
           <div className="output-toolbar">
             <div className="panel-title">Humanized Output</div>
-            <button
-              className="btn-secondary"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(error ? error : outputText)
-                  setCopied(true)
-                  setTimeout(() => setCopied(false), 1500)
-                } catch (_) {}
-              }}
-              disabled={!outputText && !error}
-              aria-label="Copy output"
-              title="Copy output"
-            >
-              {copied ? 'Copied' : 'Copy'}
-            </button>
+            {!loading && (outputText || error) && (
+              <button
+                className="btn-secondary"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(error ? error : outputText)
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 1500)
+                  } catch (_) {}
+                }}
+                aria-label="Copy output"
+                title="Copy output"
+              >
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            )}
           </div>
           {error ? (
             <div className="output output-box" style={{ color: '#ef4444' }}>{error}</div>
           ) : (
-            <div className="output output-box">{loading ? 'Waiting for response...' : outputText}</div>
+            <div className="output output-box">{(loading && !outputText) ? 'Waiting for response...' : outputText}</div>
           )}
         </section>
       </div>
