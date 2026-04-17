@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { GoogleGenAI } from '@google/genai'
 import './App.css'
 
@@ -59,6 +59,19 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
+  const [dots, setDots] = useState('')
+
+  useEffect(() => {
+    let interval;
+    if (loading) {
+      interval = setInterval(() => {
+        setDots(prev => prev.length >= 3 ? '' : prev + '.');
+      }, 400);
+    } else {
+      setDots('');
+    }
+    return () => clearInterval(interval);
+  }, [loading]);
 
   async function callGeminiForChunk(chunk, onProgress) {
     if (aiClients.length === 0) {
@@ -119,6 +132,11 @@ export default function App() {
 
     try {
       for (let i = 0; i < chunks.length; i++) {
+        // Free tier rate limits: Wait 3 seconds between chunks to avoid Google AI Studio suspending your project!
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+
         const chunkOutput = await callGeminiForChunk(chunks[i], (partialChunkOutput) => {
           // As the current chunk streams in, show previous completed chunks + this partial one
           const newCurrentStream = fullOutput + (fullOutput ? '\n\n' : '') + partialChunkOutput;
@@ -155,7 +173,7 @@ export default function App() {
           />
           <div className="button-row right">
             <button onClick={() => callGeminiAPI(inputText)} disabled={loading || !(inputText || '').trim()}>
-              {loading ? 'Humanizing...' : 'Humanize'}
+              {loading ? `Humanizing${dots}` : 'Humanize'}
             </button>
             <button className="btn-secondary" onClick={() => { setInputText(''); setOutputText(''); setError('') }} disabled={loading}>
               Clear
